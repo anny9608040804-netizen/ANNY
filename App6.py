@@ -5,6 +5,7 @@ from PIL import Image
 import io
 import base64
 import datetime
+import os # 新增: 處理環境變數
 
 # === 設定頁面 ===
 st.set_page_config(
@@ -14,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# === 常數與預設資料 ===
+# === 常數與預設資料 (保持不變) ===
 FOOTER_PRESETS = [
     "週末交易怕滑點？快用 OKX Wallet DEX 聚合，最優匯率一鍵換！",
     "OKX Wallet 支援百條公鏈，跨鏈交易一鍵搞定，省時又省力。",
@@ -45,8 +46,7 @@ TOKEN_MAPPING = {
     'trx': 'trx', 'tron': 'trx'
 }
 
-# === 全新設計的高質感 SVG 圖標庫 ===
-# 這些 SVG 經過設計，帶有漸層和發光效果，更符合霓虹主題。
+# === 全新設計的高質感 SVG 圖標庫 (保持不變) ===
 SVG_ICONS = {
     'bull': '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
         <defs>
@@ -230,7 +230,6 @@ SVG_ICONS = {
 }
 
 NEON_ICONS_CONFIG = [
-    # 這裡的 'icon' 欄位現在存的是上面的 SVG 代碼
     {'id': 'bull', 'label': '上漲 Bull', 'icon': SVG_ICONS['bull'], 'color': 'text-green-400', 'bg': 'bg-green-400'},
     {'id': 'bear', 'label': '下跌 Bear', 'icon': SVG_ICONS['bear'], 'color': 'text-red-400', 'bg': 'bg-red-400'},
     {'id': 'alert', 'label': '警告 Alert', 'icon': SVG_ICONS['alert'], 'color': 'text-yellow-400', 'bg': 'bg-yellow-400'},
@@ -286,7 +285,45 @@ def get_default_token_image(symbol):
         pass
     return None
 
-# === 初始化 Session State ===
+# 【新增功能】AI 圖片生成接口
+def generate_ai_image_logic(prompt: str) -> Image.Image | None:
+    """
+    呼叫外部 AI 圖片生成 API (例如 Stable Diffusion)。
+    請在此處替換為您選擇的服務的實際 API 呼叫邏輯。
+    """
+    
+    # ⚠️ 注意: 這裡需要您自行實作 API 呼叫的細節。
+    # 範例（假設您使用 Replicate 的 Stable Diffusion API）：
+    # try:
+    #     import replicate
+    #     client = replicate.Client(api_token=os.getenv("REPLICATE_API_TOKEN"))
+    #     
+    #     # 範例: 呼叫 Stable Diffusion 3
+    #     output = client.run(
+    #         "stability-ai/stable-diffusion-3",
+    #         input={
+    #             "prompt": f"Neon style, digital currency news background, no text, {prompt}",
+    #             "aspect_ratio": "16:9",
+    #             "output_format": "png"
+    #         }
+    #     )
+    #     
+    #     # 假設 API 返回圖片的 URL，您需要下載它
+    #     if output and isinstance(output, list) and output[0]:
+    #         img_url = output[0]
+    #         img_resp = requests.get(img_url, timeout=10)
+    #         return Image.open(io.BytesIO(img_resp.content))
+    #     return None
+    # except Exception as e:
+    #     st.error(f"AI 圖片生成失敗: {e}")
+    #     return None
+    
+    st.error("AI 圖片生成功能尚未配置 API 呼叫邏輯。")
+    st.warning(f"當前提示詞: {prompt}")
+    return None
+
+
+# === 初始化 Session State (保持不變) ===
 if 'news_data' not in st.session_state:
     st.session_state.news_data = [
         {
@@ -382,8 +419,11 @@ for idx, item in enumerate(st.session_state.news_data):
             st.session_state.news_data[idx]['content'] = new_content
         
         with c2:
-            st.caption("代幣圖片設定 (Token)")
-            token_mode = st.selectbox("模式", ["auto", "custom_search", "upload", "none"], key=f"t_mode_{idx}", index=["auto", "custom_search", "upload", "none"].index(item['token_mode'] if item['token_mode'] in ["auto", "custom_search", "upload", "none"] else "auto"))
+            st.caption("代幣圖片/背景插圖設定 (Token/AI Image)")
+            # 【修改點】新增 'ai_image' 模式
+            token_mode = st.selectbox("模式", ["auto", "custom_search", "upload", "ai_image", "none"], 
+                                      key=f"t_mode_{idx}", 
+                                      index=["auto", "custom_search", "upload", "ai_image", "none"].index(item['token_mode'] if item['token_mode'] in ["auto", "custom_search", "upload", "ai_image", "none"] else "auto"))
             st.session_state.news_data[idx]['token_mode'] = token_mode
             current_img_b64 = st.session_state.news_data[idx]['token_image_base64']
 
@@ -422,7 +462,26 @@ for idx, item in enumerate(st.session_state.news_data):
                     if st.checkbox("自動去除白色背景", value=True, key=f"rmbg_{idx}"):
                         img = remove_white_background_logic(img)
                     st.session_state.news_data[idx]['token_image_base64'] = image_to_base64(img)
-
+            
+            # 【新增功能】AI 圖片生成介面
+            elif token_mode == "ai_image":
+                ai_prompt = st.text_area("輸入 AI 圖片提示詞 (Prompt)", 
+                                         value=item.get('ai_prompt', f"A neon style representation of the news: {new_title}, cryptocurrency, detailed, dark background, 8k"), 
+                                         key=f"ai_prompt_{idx}")
+                # 儲存提示詞，以便在不同 Session 之間保持
+                st.session_state.news_data[idx]['ai_prompt'] = ai_prompt 
+                
+                if st.button("生成 AI 圖片", key=f"btn_ai_gen_{idx}") and ai_prompt:
+                    with st.spinner("AI 圖片生成中，請稍候 (約 15-60 秒)..."):
+                        generated_img = generate_ai_image_logic(ai_prompt)
+                        if generated_img:
+                             # AI 生成的圖通常需要保留背景
+                            st.session_state.news_data[idx]['token_image_base64'] = image_to_base64(generated_img)
+                            st.success("AI 圖片生成成功！")
+                        else:
+                            st.error("AI 圖片生成失敗，請檢查 API 配置。")
+            
+            # 顯示當前圖片
             if st.session_state.news_data[idx]['token_image_base64']:
                 st.image(st.session_state.news_data[idx]['token_image_base64'], width=64)
                 if st.button("清除圖片", key=f"clr_{idx}"):
@@ -465,13 +524,25 @@ def generate_html_preview():
     for idx, item in enumerate(st.session_state.news_data):
         token_html = ""
         has_token = False
+        # 不論是代幣圖片、還是 AI 生成的背景圖，都使用 token_image_base64
         if item['token_mode'] != 'none' and item['token_image_base64']:
             has_token = True
-            token_html = f"""
-            <div class="relative w-20 h-20">
-                <img src="{item['token_image_base64']}" class="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
-            </div>
-            """
+            
+            # 【調整點】如果是 AI 圖片，則將其作為背景圖，覆蓋整個卡片
+            if item['token_mode'] == 'ai_image':
+                # AI 圖片作為背景，使用絕對定位和 CSS 屬性來覆蓋
+                token_html = f"""
+                <div class="absolute inset-0 z-0 bg-cover bg-center opacity-30 blur-sm" 
+                     style="background-image: url('{item['token_image_base64']}');">
+                </div>
+                """
+            else:
+                # 傳統代幣圖片，作為右下角圖標
+                token_html = f"""
+                <div class="relative w-20 h-20">
+                    <img src="{item['token_image_base64']}" class="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
+                </div>
+                """
         
         status_config = None
         detected_status_id = 'activity' 
@@ -482,11 +553,12 @@ def generate_html_preview():
              status_config = next((i for i in NEON_ICONS_CONFIG if i['id'] == status_id), None)
         elif item['status_mode'] == 'auto':
              if has_token:
-                 status_config = None 
+                 status_config = None # 有代幣/AI圖時，不自動顯示狀態圖示
              else:
                  if any(k in text_content for k in ['上漲', '新高', 'bull']): detected_status_id = 'bull'
                  elif any(k in text_content for k in ['下跌', '暴跌', 'bear']): detected_status_id = 'bear'
                  elif any(k in text_content for k in ['警告', '風險', 'alert']): detected_status_id = 'alert'
+                 
                  status_config = next((i for i in NEON_ICONS_CONFIG if i['id'] == detected_status_id), None)
         
         status_html = ""
@@ -503,8 +575,10 @@ def generate_html_preview():
                 </div>
             </div>
             """
-        elif has_token:
-            title_color_class = "text-green-300"
+        # 【修改點】移除：當有 token 時，預設將標題設為 text-green-300。
+        # 這樣可以避免自動偵測的代幣顏色覆蓋標題文字。
+        # elif has_token:
+        #     title_color_class = "text-green-300" 
             
         border_colors = [
             "border-green-500/30 shadow-[0_0_15px_rgba(74,222,128,0.15)]",
@@ -514,20 +588,41 @@ def generate_html_preview():
         ]
         border_class = border_colors[idx % len(border_colors)]
         title_style = f'class="text-3xl font-bold leading-tight mb-4 {title_color_class}"'
-
-        news_items_html += f"""
-        <div class="relative bg-gray-900/80 rounded-2xl p-6 border {border_class} flex flex-col justify-between h-[280px] backdrop-blur-sm">
-            <div class="relative z-10">
-                <h3 {title_style}>{item['title']}</h3>
-                <p class="text-gray-300 text-xl leading-relaxed font-medium">{item['content']}</p>
+        
+        # 【調整點】將 token_html 移到最外層作為背景層，並將內容放在 z-10
+        # 傳統 token 圖片則放在右下角的 flex 容器內
+        
+        news_content_and_status_html = ""
+        if item['token_mode'] == 'ai_image':
+             # AI 圖片作為背景，不需要右下角的圖標，但保留狀態圖示
+             news_content_and_status_html = f"""
+            <div class="absolute bottom-4 right-4 z-10">
+                <div class="flex items-end gap-3">
+                     {status_html}
+                </div>
             </div>
+             """
+        else:
+            # 傳統模式，代幣圖和狀態圖示都在右下角
+             news_content_and_status_html = f"""
             <div class="absolute bottom-4 right-4 z-0">
                 <div class="flex items-end gap-3">
                     {token_html}
                     {status_html}
                 </div>
             </div>
-        </div>
+             """
+             # 如果是傳統模式，將 token_html 清空，因為它已經在 news_content_and_status_html 中了
+             token_html = "" 
+
+
+        news_items_html += f"""
+        <div class="relative bg-gray-900/80 rounded-2xl p-6 border {border_class} flex flex-col justify-between h-[280px] backdrop-blur-sm overflow-hidden">
+            {token_html} <div class="relative z-10">
+                <h3 {title_style}>{item['title']}</h3>
+                <p class="text-gray-300 text-xl leading-relaxed font-medium">{item['content']}</p>
+            </div>
+            {news_content_and_status_html} </div>
         """
 
     logo_or_title_html = ""
@@ -563,7 +658,6 @@ def generate_html_preview():
         
         <div class="flex gap-4">
              <button onclick="downloadImage()" class="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-black font-bold py-2 px-6 rounded-full shadow-lg transition-transform hover:scale-105 cursor-pointer">
-                <!-- 下載按鈕的圖標仍使用 Lucide (因為它在 Streamlit UI 外) -->
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                 下載圖片 (PNG)
             </button>
@@ -599,7 +693,6 @@ def generate_html_preview():
                         <p class="mx-4">以上內容不構成任何投資建議，投資有風險，入市需謹慎。</p>
                         
                         <div class="flex gap-2 w-16 justify-end">
-                            <!-- 地球圖標也改用內嵌 SVG -->
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         </div>
                     </div>
@@ -613,7 +706,6 @@ def generate_html_preview():
                 const btn = document.querySelector('button');
                 const originalText = btn.innerHTML;
                 btn.innerText = "生成中...";
-                
                 html2canvas(element, {{
                     useCORS: true,
                     scale: 2,
@@ -640,9 +732,7 @@ def generate_html_preview():
     return html_content
 
 st.markdown("### 4. 即時預覽")
-st.info("💡 說明：圖標已全面升級為高質感 SVG，並移除 Lucide 依賴。")
+st.info("💡 說明：圖標已全面升級為高質感 SVG，並移除 Lucide 依賴。**新增了 AI 圖片生成模式 (請自行配置 API 邏輯)**。")
 
 preview_html = generate_html_preview()
 st.components.v1.html(preview_html, height=1000, scrolling=True)
-
-
